@@ -34,7 +34,6 @@ class InvalidSaml(BaseException):
 
 
 class Credentials(object):
-
     '''Simple AWS Credentials Profile representation.
 
     This object reads in an Amazon ~/.aws/credentials file, and then allows you
@@ -84,7 +83,6 @@ class Credentials(object):
 
 
 class Session(object):
-
     '''Amazon Federated Session Generator.
 
     This class is used to contact Amazon with a specific SAML Assertion and
@@ -150,20 +148,34 @@ class Session(object):
 
         return (now + buffer) < expir
 
-    def assume_role(self):
+    def assume_role(self, role):
         '''Use the SAML Assertion to actually get the credentials.
 
         Uses the supplied (one time use!) SAML Assertion to go out to Amazon
         and get back a set of temporary credentials. These are written out to
         disk and can be used for an hour before they need to be replaced.
-        '''
-        try:
-            role = self.assertion.roles()[0]
-        except xml.etree.ElementTree.ParseError:
-            log.error('Could not find any Role in the SAML assertion')
-            log.error(self.assertion.__dict__)
-            raise InvalidSaml()
 
+        Returns:
+            role (dict). Used for reup when selecting.
+        '''
+        if not role:
+            try:
+                role = self.assertion.roles()[0]
+            except xml.etree.ElementTree.ParseError:
+                log.error('Could not find any Role in the SAML assertion')
+                log.error(self.assertion.__dict__)
+                raise InvalidSaml()
+
+            if len(self.assertion.roles()) > 1:
+                log.info('More than one role available, please select one: ')
+                role_count = 1
+                for role in self.assertion.roles():
+                    print "[%s] Role: %s" % (role_count, role["role"][13:])
+                    role_count += 1
+                role_selection = input('Select a role from above: ')
+                role = self.assertion.roles()[role_selection - 1]
+
+        log.info('Assuming: %s' % role["role"][13:])
         session = self.sts.assume_role_with_saml(
             RoleArn=role['role'],
             PrincipalArn=role['principle'],
@@ -176,6 +188,7 @@ class Session(object):
         self.expiration = creds['Expiration']
 
         self._write()
+        return role
 
     def _write(self):
         '''Writes out our secrets to the Credentials object'''

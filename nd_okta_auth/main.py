@@ -88,7 +88,6 @@ def get_config_parser(argv):
                                    'details below for more help.'
                                ),
                                required=True)
-
     optional_args = arg_parser.add_argument_group('optional arguments')
     optional_args.add_argument('-V', '--version', action='version',
                                version=__version__)
@@ -154,28 +153,26 @@ def main(argv):
     # object to get a fresh SAMLResponse repeatedly and refresh our AWS
     # Credentials.
     session = None
+    role = None
     while True:
         # If an AWS Session object has been created already, lets check if its
         # still valid. If it is, sleep a bit and skip to the next execution of
         # the loop.
         if session and session.is_valid:
-            log.debug('Credentials are still valid, sleepingt')
+            log.debug('Credentials are still valid, sleeping')
             time.sleep(15)
             continue
 
-        log.info('Getting SAML Assertion from {org}'.format(
-            org=config.org))
-
+        log.info('Getting SAML Assertion from {org}'.format(org=config.org))
         try:
             assertion = okta_client.get_assertion(appid=config.appid,
                                                   apptype='amazon_aws')
             session = aws.Session(assertion, profile=config.name)
-            session.assume_role()
+            role = session.assume_role(role)
         except requests.exceptions.ConnectionError as e:
             log.warning('Connection error... will retry')
             time.sleep(5)
             continue
-
         # If we're not running in re-up mode, once we have the assertion
         # and creds, go ahead and quit.
         if not config.reup:
